@@ -2,12 +2,10 @@ import boto3
 import subprocess
 import time
 
-from cassandra.cluster import Cluster, ConsistencyLevel
+from cassandra.cluster import ConsistencyLevel, Cluster
 from ssl import SSLContext, PROTOCOL_TLSv1_2, CERT_REQUIRED
-from cassandra.auth import PlainTextAuthProvider
 from cassandra_sigv4.auth import SigV4AuthProvider
-from uuid import uuid4
-from cassandra.query import SimpleStatement
+from cassandra.query import SimpleStatement, BatchStatement
 
 connectsource = {
     "ip": "194.233.68.255",
@@ -58,7 +56,13 @@ try:
 
             for s in querysplit:
                 if not contains_only_newlines(s):
-                    sessiondest.execute(s)  # keyspace must come at very first
+                    try:
+                        sessiondest.execute(s)  # keyspace must come at very first
+                    except Exception as e:
+                        # print("Error executing: " + s.strip("\n"))
+                        # print(e)
+                        pass
+
                     while not keyspace_exists:
                         try:
                             sessiondest.set_keyspace(row.keyspace_name)
@@ -66,6 +70,29 @@ try:
                         except Exception as e:
                             print("Keyspace not yet available, waiting...")
                             time.sleep(5)  # Adjust the sleep time as necessary
+
+            ## to list all tables
+            rows = sessionsrc.execute(
+                f"SELECT table_name FROM system_schema.tables WHERE keyspace_name = '{row.keyspace_name}'"
+            )
+
+            for rowt in rows:
+                print(f"Executing table {rowt.table_name}")
+                source_data = sessionsrc.execute(
+                    f"SELECT * FROM {row.keyspace_name}.{rowt.table_name}"
+                )
+
+                placeholders = ", ".join(["%s"] * len(source_data.column_names))
+                column_names = ", ".join(source_data.column_names)
+
+                insert_query = SimpleStatement(
+                    f"INSERT INTO {row.keyspace_name}.{rowt.table_name} ({column_names}) VALUES ({placeholders})",
+                    consistency_level=ConsistencyLevel.LOCAL_QUORUM,
+                )
+
+                # insert the data taken from source to destination (keyspaces)
+                for rowd in source_data:
+                    sessiondest.execute(insert_query, tuple(rowd))
 
 except Exception as e:
     print(e)
