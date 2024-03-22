@@ -1,0 +1,6 @@
+version: '3.8'
+services:
+  my-python-app:
+    build: .
+    volumes:
+      - ./app:/app
