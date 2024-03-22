@@ -34,6 +34,12 @@ clusterdest = Cluster(
 )
 sessiondest = clusterdest.connect()
 
+
+def contains_only_newlines(s):
+    stripped_string = s.strip()
+    return stripped_string == ""
+
+
 try:
     system_schemas = {}
     rows = sessionsrc.execute("SELECT keyspace_name FROM system_schema.keyspaces;")
@@ -51,14 +57,15 @@ try:
             querysplit = output.split(";")
 
             for s in querysplit:
-                sessiondest.execute(s)  # keyspace must come at very first
-                while not keyspace_exists:
-                    try:
-                        sessiondest.set_keyspace(row.keyspace_name)
-                        keyspace_exists = True
-                    except Exception as e:
-                        print("Keyspace not yet available, waiting...")
-                        time.sleep(5)  # Adjust the sleep time as necessary
+                if not contains_only_newlines(s):
+                    sessiondest.execute(s)  # keyspace must come at very first
+                    while not keyspace_exists:
+                        try:
+                            sessiondest.set_keyspace(row.keyspace_name)
+                            keyspace_exists = True
+                        except Exception as e:
+                            print("Keyspace not yet available, waiting...")
+                            time.sleep(5)  # Adjust the sleep time as necessary
 
 except Exception as e:
     print(e)
